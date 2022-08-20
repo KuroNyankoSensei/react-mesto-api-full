@@ -2,7 +2,7 @@ function Footer() {
   const year = new Date().getFullYear()
   return (
     <footer className="footer">
-      <p className="footer__copyright">© {year} Kolyasnikova Margarita</p>
+      <p className="footer__copyright">© {year} KuroNyanko</p>
     </footer>
   )
 }
