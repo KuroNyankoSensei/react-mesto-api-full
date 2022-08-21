@@ -27,7 +27,7 @@ function App() {
   const [cards, setCards] = useState([]);
   const [loggedIn, setLoggedIn] = useState(false);
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState({ icon: '', text: '' });
+  const [message, setMessage] = useState({icon: '', text: ''});
 
   const isOpen = isEditProfilePopupOpen || isAddPlacePopupOpen || isEditAvatarPopupOpen || selectedCard
 
@@ -43,61 +43,77 @@ function App() {
     setInfoToolTipOpen(false);
   };
 
+  //Функция авторизации
+  function handleAuthorization(pass, email){
+    auth.authorization(pass, email)
+    .then((data) => {
+      localStorage.setItem('jwt', data.token);
+      auth.checkToken(data.token)
+      .then((res) => {
+        setLoggedIn(true);
+        setEmail(res.user.email);
+        setCurrentUser(res.user);
+        history.push('/');
+      })
+      .catch(() => {
+        setMessage({icon: iconError, text: 'Что-то пошло не так! Попробуйте ещё раз.'});
+        setInfoToolTipOpen(true);
+      })
+    })
+    .catch((err) => {
+      setMessage({icon: iconError, text: 'Что-то пошло не так! Попробуйте ещё раз.'});
+      setInfoToolTipOpen(true);
+      console.log(err);
+    }); 
+  }
+
   //Эффект для проверки токена
   useEffect(() => {
-    handleTokenCheck()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    handleTokenCheck();
   }, [])
 
   //Функция проверки токена при посещении
-  function handleTokenCheck() {
+  function handleTokenCheck(){
     const jwt = localStorage.getItem('jwt');
-    if (jwt) {
+    if (jwt){
       auth.checkToken(jwt)
-        .then((res) => {
-          console.log(res.user);
-          if (res) {
-            setEmail(res.user.email);
-            setLoggedIn(true);
-            setCurrentUser(res.user);
-            history.push('/');
-          }
-        })
-        .catch((err) => {
-          console.log(err);
-        });
+      .then((res) => {
+        if (res) {
+          setEmail(res.user.email);
+          setLoggedIn(true);
+          setCurrentUser(res.user);
+          history.push('/');
+        }
+      })
+      .catch((err) => {
+        console.log(err);
+      }); 
     }
   }
 
   //Получаем данные
   useEffect(() => {
     if (loggedIn) {
-      api.getInfo()
-        .then((res) => {
-          setCurrentUser(res);
+      api._headers.authorization = `Bearer ${localStorage.getItem('jwt')}`
+      Promise.all([api.getInfo(), api.getCards()])
+        .then(([userInfo, cards]) => {
+          setCurrentUser(userInfo.user);
+          setCards(cards);
         })
         .catch((err) => {
           console.log(err);
-        });
-      api.getCards()
-        .then((cardsData) => {
-          setCards(cardsData);
         })
-        .catch((err) => {
-          console.log(err);
-        });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loggedIn]);
 
   //Эффект для закрытия попапа ESC
   useEffect(() => {
     function closeByEscape(evt) {
-      if (evt.key === 'Escape') {
+      if(evt.key === 'Escape') {
         closeAllPopups();
       }
     }
-    if (isOpen) {
+    if(isOpen) {
       document.addEventListener('keydown', closeByEscape);
       return () => {
         document.removeEventListener('keydown', closeByEscape);
@@ -106,113 +122,102 @@ function App() {
   }, [isOpen])
 
   //Функция лайка карточки
-  function handleCardLike(card) {
-    const isLiked = card.likes.some((i) => i._id === currentUser._id);
-
-    api
-      .changeLikeCardStatus(card._id, !isLiked)
+  function handleCardLike(card){
+    const likes = card.likes;
+    const check = (element) => element === currentUser._id;
+    const isLiked = likes.some(check);
+    if (isLiked){
+      api.unlikeCard(card._id)
       .then((newCard) => {
         setCards((state) =>
-          state.map((c) => (c._id === card._id ? newCard : c))
-        );
+                        state.map((currentCard) =>
+                            currentCard._id === card._id ? newCard.card : currentCard))
+
       })
-      .catch((err) => console.log(err));
+      .catch((err) => console.log(err))
+    }
+    else{
+      api.likeCard(card._id)
+      .then((newCard) => {
+        setCards((state) =>
+                        state.map((currentCard) =>
+                            currentCard._id === card._id ? newCard.card : currentCard))
+      })
+      .catch((err) => console.log(err))
+    }
   }
 
   //Функция удаления карточки
-  function handleCardDelete(card) {
+  function handleCardDelete(card){
     api.deleteCard(card._id)
-      .then(() => {
-        setCards((state) => state.filter((currentCard) => currentCard._id !== card._id))
-      })
-      .catch((err) => console.log(err))
+    .then(() => {
+      setCards((state) => state.filter((currentCard) => currentCard._id !== card._id))
+    })
+    .catch((err) => console.log(err))
   }
 
   //Функция обновления стейта имени
-  function handleUpdateUser(userInfo) {
+  function handleUpdateUser(userInfo){
     api.patchInfo(userInfo)
-      .then((newInfo) => {
-        setCurrentUser(newInfo);
-        closeAllPopups();
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+    .then((newInfo) => {
+      setCurrentUser(newInfo.user);
+      closeAllPopups();
+    })
+    .catch((err) => {
+      console.log(err);
+    });
   }
 
   //Функция обновления аватара
-  function handleUpdateAvatar(link) {
+  function handleUpdateAvatar(link){
     api.patchAvatar(link)
-      .then((newInfo) => {
-        setCurrentUser(newInfo);
-        closeAllPopups();
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+    .then((newInfo) => {
+      setCurrentUser(newInfo.user);
+      closeAllPopups();
+    })
+    .catch((err) => {
+      console.log(err);
+    });  
   }
 
   //Функция сохранения карточки
-  function handleAddPlaceSubmit(cardInfo) {
+  function handleAddPlaceSubmit(cardInfo){
     api.postCard(cardInfo)
-      .then((newCard) => {
-        setCards([newCard, ...cards]);
-        closeAllPopups();
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+    .then((newCard) => {
+      setCards([newCard, ...cards]); 
+      closeAllPopups();
+    })
+    .catch((err) => {
+      console.log(err);
+    });  
   }
 
   //Функция регистрации
-  function handleRegistration(pass, email) {
+  function handleRegistration(pass, email){
     auth.registration(pass, email)
-      .then((res) => {
-        setMessage({ icon: iconOk, text: 'Вы успешно зарегистрировались!' });
-        history.push('/signin');
-        console.log(res);
-      })
-      .catch(() => {
-        setMessage({ icon: iconError, text: 'Что-то пошло не так! Попробуйте ещё раз.' });
-      })
-      .finally(() => {
-        setInfoToolTipOpen(true);
-      })
-  }
-
-  //Функция авторизации
-  function handleAuthorization(pass, email) {
-    auth.authorization(pass, email)
-      .then((data) => {
-        auth.checkToken(data.token)
-          .then((res) => {
-            localStorage.setItem('jwt', data.token);
-            setLoggedIn(true);
-            setEmail(res.data.email);
-            history.push('/');
-          })
-          .catch(() => {
-            setMessage({ icon: iconError, text: 'Что-то пошло не так! Попробуйте ещё раз.' });
-            setInfoToolTipOpen();
-          })
-      })
-      .catch((err) => {
-        setMessage({ icon: iconError, text: 'Что-то пошло не так! Попробуйте ещё раз.' });
-        setInfoToolTipOpen(true);
-        console.log(err);
-      });
+    .then((res) => {
+      setMessage({icon: iconOk, text: 'Вы успешно зарегистрировались!'});
+      history.push('/signin');
+      console.log(res);
+    })
+    .catch(() => {
+      setMessage({icon: iconError, text: 'Что-то пошло не так! Попробуйте ещё раз.'});
+    })
+    .finally(() => {
+      setInfoToolTipOpen(true);
+    })
   }
 
   //Функция выхода
-  function handleSignOut() {
+  function handleSignOut(){
     setLoggedIn(false);
     localStorage.removeItem('jwt');
   }
 
   return (
     <CurrentUserContext.Provider value={currentUser}>
-      <div className="page">
-        <Header
+        <div className="page">
+        <Header 
           loggedIn={loggedIn}
           email={email}
           onSignOut={handleSignOut}
@@ -223,7 +228,7 @@ function App() {
             exact path="/"
             loggedIn={loggedIn}
             component={Main}
-            cards={cards}
+            cards ={cards}
             onEditAvatar={handleEditAvatarClick}
             onEditProfile={handleEditProfileClick}
             onAddPlace={handleAddPlaceClick}
@@ -238,42 +243,42 @@ function App() {
             />
           </Route>
           <Route path="/signin">
-            <Login
+            <Login 
               onAuthorization={handleAuthorization}
             />
           </Route>
           <Route exact path="*">
-            {loggedIn ? <Redirect to="/" /> : <Redirect to="/signin" />}
+          {loggedIn ? <Redirect to="/"/> : <Redirect to="/signin"/>}
           </Route>
         </Switch>
 
         <AddPlacePopup
-          isOpen={isAddPlacePopupOpen}
+          isOpen={isAddPlacePopupOpen} 
           onClose={closeAllPopups}
           onAddPlace={handleAddPlaceSubmit} />
 
-        <EditProfilePopup
-          isOpen={isEditProfilePopupOpen}
+        <EditProfilePopup 
+          isOpen={isEditProfilePopupOpen} 
           onClose={closeAllPopups}
           onUpdateUser={handleUpdateUser} />
-
+        
         <EditAvatarPopup
           isOpen={isEditAvatarPopupOpen}
           onClose={closeAllPopups}
           onUpdateAvatar={handleUpdateAvatar}
         />
 
-        <ImagePopup
-          card={selectedCard}
-          onClose={closeAllPopups}
+        <ImagePopup 
+        card={selectedCard} 
+        onClose={closeAllPopups} 
         />
 
         <InfoToolTip
-          name="infoToolTip"
-          onClose={closeAllPopups}
-          isOpen={isInfoTooltipOpen}
-          icon={message.icon}
-          text={message.text}
+        name="infoToolTip"
+        onClose={closeAllPopups}
+        isOpen={isInfoTooltipOpen}
+        icon={message.icon}
+        text={message.text}
         />
 
       </div>
